@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# ÷¥––HadoopΩ¯––‘§¥¶¿Ì
+#°“ªπ≤£≥∏ˆ≤Ω÷Ë
+# 1:  ˝æ›‘¥£(ubs»’÷æ) -> uniq £®»°≥ˆquery cookie≤¢»•÷ÿ£©
+# 2: uniq -> filtered (π˝¬À÷ª±ª1∏ˆcookie∑√Œ µƒquery)
+# 3: filtered -> result (∞¥’’cookieæ€ºØ)
+
+source ../common.sh
+source ../conf.sh
+
+$HADOOP dfs -rmr $UNIQ_DATA_PATH
+$HADOOP streaming \
+    -D mapred.job.map.capacity=$MAP_CAP \
+    -D mapred.job.reduce.capacity=$REDUCE_CAP \
+    -D stream.num.map.output.key.fields=2 \
+    -mapper 'python mapper.py' \
+    -reducer 'sort -m -u' \
+    -input $RAW_DATA_PATH \
+    -output $UNIQ_DATA_PATH \
+    -file mapper.py \
+    -numReduceTasks $REDUCE_NUM
+
+if [ $? -ne 0 ]; then
+    write_log "failed do mapreduce job: raw-data to uniq-data"
+    $ALARM "failed do mapreduce job: raw-data to uniq-data"
+    exit 1
+fi
+write_log '[mapred][raw-data to uniq-data] succeed!'
+
+$HADOOP dfs -rmr $FILTERED_DATA_PATH
+$HADOOP streaming \
+    -D mapred.job.map.capacity=$MAP_CAP \
+    -D mapred.job.reduce.capacity=$REDUCE_CAP \
+    -mapper 'cat' \
+    -reducer 'python reducer.py' \
+    -input $UNIQ_DATA_PATH \
+    -output $FILTERED_DATA_PATH \
+    -file reducer.py \
+    -numReduceTasks $REDUCE_NUM
+
+if [ $? -ne 0 ]; then
+    write_log "failed to do mapreduce job: uniq-data to filtered-data"
+    $ALARM "failed to do mapreduce job: uniq-data to filtered-data"
+    exit 1
+fi
+write_log '[mapred][uniq-data to filtered-data] succeed!'
+
+$HADOOP dfs -rmr $RESULT_DATA_PATH
+$HADOOP streaming \
+    -D mapred.job.map.capacity=$MAP_CAP \
+    -D mapred.job.reduce.capacity=$REDUCE_CAP \
+    -mapper 'cat' \
+    -reducer 'cat' \
+    -input $FILTERED_DATA_PATH \
+    -output $RESULT_DATA_PATH \
+    -numReduceTasks $REDUCE_NUM
+
+if [ $? -ne 0 ]; then
+    write_log "failed to do mapreduce job: filtered-data to result-data"
+    $ALARM "failed to do mapreduce job: filtered-data to result-data"
+    exit 1
+fi
+write_log '[mapred][filtered-data to result-data] succeed!'
+
+
